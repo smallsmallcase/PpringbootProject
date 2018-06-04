@@ -1,0 +1,1227 @@
+Index: src/main/java/com/huj/sell/controller/BuyerOrderController.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/com/huj/sell/controller/BuyerOrderController.java	(date 1528113446575)
++++ src/main/java/com/huj/sell/controller/BuyerOrderController.java	(date 1528113446575)
+@@ -0,0 +1,117 @@
++package com.huj.sell.controller;
++
++import com.huj.sell.converter.OrderForm2OrderDTOConverter;
++import com.huj.sell.dto.OrderDTO;
++import com.huj.sell.enums.ResultEnum;
++import com.huj.sell.exception.SellException;
++import com.huj.sell.from.OrderForm;
++import com.huj.sell.service.BuyerService;
++import com.huj.sell.service.OrderService;
++import com.huj.sell.utils.ResultVOUtil;
++import com.huj.sell.view.ResultVO;
++import lombok.extern.slf4j.Slf4j;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.data.domain.Page;
++import org.springframework.data.domain.PageRequest;
++import org.springframework.util.CollectionUtils;
++import org.springframework.util.StringUtils;
++import org.springframework.validation.BindingResult;
++import org.springframework.web.bind.annotation.*;
++
++import javax.validation.Valid;
++import java.util.HashMap;
++import java.util.List;
++import java.util.Map;
++
++/**
++ * Package: com.huj.sell.controller
++ * Author: smallcase
++ * Date: Created in 2018/6/4 14:39
++ */
++
++@RestController
++@RequestMapping("/buyer/order")
++@Slf4j
++
++public class BuyerOrderController {
++
++    @Autowired
++    private OrderService orderService;
++    @Autowired
++    private BuyerService buyerService;
++
++    //创建订单
++    @PostMapping("/create")
++    public ResultVO<Map<String, String>> create(@Valid OrderForm orderForm, BindingResult bindingResult) {
++        if (bindingResult.hasErrors()) {
++            log.error("【创建订单】参数不正确，orderform={}", orderForm);
++            throw new SellException(ResultEnum.PARAM_ERROR.getCode(),
++                    bindingResult.getFieldError().getDefaultMessage());
++        }
++
++        OrderDTO orderDTO = OrderForm2OrderDTOConverter.convert(orderForm);
++        if (CollectionUtils.isEmpty(orderDTO.getOrderDetailList())) {
++            log.error("【创建订单】购物车不能为空");
++            throw new SellException(ResultEnum.CART_EMPTY);
++        }
++
++        OrderDTO createResult = orderService.create(orderDTO);
++
++        HashMap<String, String> map = new HashMap<>();
++        map.put("orderId", createResult.getOrderId());
++
++        return ResultVOUtil.success(map);
++
++
++    }
++    //订单列表
++
++    @GetMapping("/list")
++    public ResultVO<List<OrderDTO>> list(@RequestParam("openId") String openid,
++                                         @RequestParam(value = "page", defaultValue = "0") Integer page,
++                                         @RequestParam(value = "size", defaultValue = "10") Integer size) {
++        if (StringUtils.isEmpty(openid)) {
++            log.error("【查询订单列表】openid为空");
++            throw new SellException(ResultEnum.PARAM_ERROR);
++        }
++
++        PageRequest pageRequest = new PageRequest(page, size);
++        Page<OrderDTO> orderDTOPage = orderService.findList(openid, pageRequest);
++
++        return ResultVOUtil.success(orderDTOPage.getContent());
++    }
++
++    //订单详情
++
++    @GetMapping("/detail")
++    public ResultVO<OrderDTO> detail(@RequestParam("openId") String openId,
++                                     @RequestParam("orderId") String orderId) {
++        if (StringUtils.isEmpty(openId) | StringUtils.isEmpty(orderId)) {
++            log.error("【订单详情】参数为空");
++            throw new SellException(ResultEnum.PARAM_ERROR);
++        }
++        //不安全的做法，改进
++        OrderDTO orderDTO = buyerService.findOrderOne(openId,orderId);
++        return ResultVOUtil.success(orderDTO);
++    }
++
++
++    //取消订单
++
++    @PostMapping("/cancel")
++    public ResultVO cancel(@RequestParam("openId") String openId,
++                                     @RequestParam("orderId") String orderId) {
++
++        if (StringUtils.isEmpty(openId) | StringUtils.isEmpty(orderId)) {
++            log.error("【订单详情】参数为空");
++            throw new SellException(ResultEnum.PARAM_ERROR);
++        }
++
++        //TODO 不安全的做法，改进
++        buyerService.cancelOrderOne(openId, orderId);
++        return ResultVOUtil.success();
++
++    }
++
++
++}
+Index: src/main/java/com/huj/sell/converter/OrderForm2OrderDTOConverter.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/com/huj/sell/converter/OrderForm2OrderDTOConverter.java	(date 1528097149614)
++++ src/main/java/com/huj/sell/converter/OrderForm2OrderDTOConverter.java	(date 1528097149614)
+@@ -0,0 +1,53 @@
++package com.huj.sell.converter;
++
++import com.google.gson.Gson;
++import com.google.gson.reflect.TypeToken;
++import com.huj.sell.dataobject.OrderDetail;
++import com.huj.sell.dto.OrderDTO;
++import com.huj.sell.enums.ResultEnum;
++import com.huj.sell.exception.SellException;
++import com.huj.sell.from.OrderForm;
++import lombok.extern.slf4j.Slf4j;
++
++import java.util.ArrayList;
++import java.util.List;
++
++/**
++ * Package: com.huj.sell.converter
++ * Author: smallcase
++ * Date: Created in 2018/6/4 15:02
++ */
++
++@Slf4j
++public class OrderForm2OrderDTOConverter {
++
++    public static OrderDTO convert(OrderForm orderForm) {
++
++        Gson gson = new Gson();
++
++        OrderDTO orderDTO = new OrderDTO();
++        orderDTO.setBuyerName(orderForm.getName());
++        orderDTO.setBuyerPhone(orderForm.getPhone());
++        orderDTO.setBuyerOpenid(orderForm.getOpenId());
++        orderDTO.setBuyerAddress(orderForm.getAddress());
++
++        ArrayList<OrderDetail> orderDetailList;
++
++        try {
++            orderDetailList = gson.fromJson(orderForm.getItems(),
++                    new TypeToken<List<OrderDetail>>() {
++
++                    }.getType());
++        } catch (Exception e) {
++            log.error("【对象转换】错误，string={}",orderForm.getItems());
++            throw new SellException(ResultEnum.PARAM_ERROR);
++        }
++
++
++
++        orderDTO.setOrderDetailList(orderDetailList);
++
++        return orderDTO;
++
++    }
++}
+Index: src/main/java/com/huj/sell/converter/OrderMaster2OrderDTOConverter.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/com/huj/sell/converter/OrderMaster2OrderDTOConverter.java	(date 1528018518929)
++++ src/main/java/com/huj/sell/converter/OrderMaster2OrderDTOConverter.java	(date 1528018518929)
+@@ -0,0 +1,30 @@
++package com.huj.sell.converter;
++
++import com.huj.sell.dataobject.OrderMaster;
++import com.huj.sell.dto.OrderDTO;
++import org.springframework.beans.BeanUtils;
++
++import java.util.List;
++import java.util.stream.Collectors;
++
++/**
++ * Package: com.huj.sell.converter
++ * Author: smallcase
++ * Date: Created in 2018/6/3 17:25
++ */
++public class OrderMaster2OrderDTOConverter {
++
++    public static OrderDTO convert(OrderMaster orderMaster) {
++        OrderDTO orderDTO = new OrderDTO();
++        BeanUtils.copyProperties(orderMaster, orderDTO);
++        return orderDTO;
++    }
++
++    public static List<OrderDTO> convert(List<OrderMaster> orderMasterList) {
++        List<OrderDTO> orderDTOList = orderMasterList.stream().map(e -> convert(e))
++                .collect(Collectors.toList());
++
++        return orderDTOList;
++
++    }
++}
+Index: src/main/java/com/huj/sell/dataobject/OrderMaster.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/com/huj/sell/dataobject/OrderMaster.java	(revision 5e5b20f8e524f64c68a142e390008a40273e2070)
++++ src/main/java/com/huj/sell/dataobject/OrderMaster.java	(date 1528121396327)
+@@ -5,12 +5,10 @@
+ import lombok.Data;
+ import org.hibernate.annotations.DynamicUpdate;
+ 
+-import javax.persistence.Entity;
+-import javax.persistence.GeneratedValue;
+-import javax.persistence.GenerationType;
+-import javax.persistence.Id;
++import javax.persistence.*;
+ import java.math.BigDecimal;
+ import java.util.Date;
++import java.util.List;
+ 
+ /**
+  * Package: com.huj.sell.dataobject
+@@ -42,22 +40,23 @@
+     /**订单总金额.*/
+     private BigDecimal orderAmount;
+ 
++    /**创建时间*/
++    @Column(updatable = false)
++    private Date createTime;
++
++    /**更新时间*/
++    private Date updateTime;
++
+     /**订单状态，默认为新下单.*/
+     private Integer orderStatus = OrderStatusEnum.NEW.getCode();
+ 
+     /**支付状态，默认为0，未支付*/
+     private Integer payStatus = PayStatusENum.WAIT.getCode();
+ 
++//    @Transient
++//    private List<OrderDetail> orderDetailList;
++
+     public OrderMaster() {
+     }
+-
+-
+-    //    /**创建时间*/
+-//    private Date createTime;
+-//
+-//    /**更新时间*/
+-//    private Date updateTime;
+-
+-
+-    }
++}
+ 
+Index: src/main/java/com/huj/sell/dto/CartDTO.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/com/huj/sell/dto/CartDTO.java	(date 1527995248014)
++++ src/main/java/com/huj/sell/dto/CartDTO.java	(date 1527995248014)
+@@ -0,0 +1,23 @@
++package com.huj.sell.dto;
++
++import lombok.Data;
++
++/**
++ * Package: com.huj.sell.dto
++ * Author: smallcase
++ * Date: Created in 2018/6/3 11:05
++ */
++@Data
++public class CartDTO {
++
++    /**商品Id.*/
++    private String productId;
++
++    /**数量*/
++    private Integer productQuantity;
++
++    public CartDTO(String productId, Integer productQuantity) {
++        this.productId = productId;
++        this.productQuantity = productQuantity;
++    }
++}
+Index: src/main/java/com/huj/sell/dto/OrderDTO.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/com/huj/sell/dto/OrderDTO.java	(date 1528121396301)
++++ src/main/java/com/huj/sell/dto/OrderDTO.java	(date 1528121396301)
+@@ -0,0 +1,79 @@
++package com.huj.sell.dto;
++
++import com.fasterxml.jackson.annotation.JsonInclude;
++import com.fasterxml.jackson.databind.annotation.JsonSerialize;
++import com.huj.sell.dataobject.OrderDetail;
++import com.huj.sell.utils.serializer.Date2LongSerializer;
++import lombok.Data;
++import org.hibernate.annotations.DynamicUpdate;
++
++import javax.persistence.Column;
++import java.math.BigDecimal;
++import java.util.ArrayList;
++import java.util.Date;
++import java.util.List;
++
++/**
++ * Package: com.huj.sell.dto
++ * Author: smallcase
++ * Date: Created in 2018/6/3 9:41
++ */
++@Data
++@DynamicUpdate
++//@JsonSerialize(include = JsonSerialize.Inclusion.NON_NULL)
++//@JsonInclude(JsonInclude.Include.NON_NULL)
++public class OrderDTO {
++
++    /**订单ID.*/
++    private String orderId;
++
++    /**买家名字.*/
++    private String buyerName;
++
++    /**买家手机号*/
++    private String buyerPhone;
++
++    /**买家地址*/
++    private String buyerAddress;
++
++    /**买家微信*/
++    private String buyerOpenid;
++
++    /**订单总金额.*/
++    private BigDecimal orderAmount;
++
++    /**订单状态，默认为新下单.*/
++    private Integer orderStatus;
++
++    /**支付状态，默认为0，未支付*/
++    private Integer payStatus;
++
++    /**创建时间*/
++
++    @Column(updatable = false)
++    @JsonSerialize(using = Date2LongSerializer.class)
++    private Date createTime;
++
++    /**更新时间*/
++
++    @JsonSerialize(using = Date2LongSerializer.class)
++    private Date updateTime;
++
++
++    private List<OrderDetail> orderDetailList;
++
++    public OrderDTO() {
++    }
++
++    public OrderDTO(String orderId, String buyerName, String buyerPhone, String buyerAddress, String buyerOpenid, BigDecimal orderAmount, Integer orderStatus, Integer payStatus, List<OrderDetail> orderDetailList) {
++        this.orderId = orderId;
++        this.buyerName = buyerName;
++        this.buyerPhone = buyerPhone;
++        this.buyerAddress = buyerAddress;
++        this.buyerOpenid = buyerOpenid;
++        this.orderAmount = orderAmount;
++        this.orderStatus = orderStatus;
++        this.payStatus = payStatus;
++        this.orderDetailList = orderDetailList;
++    }
++}
+Index: src/main/java/com/huj/sell/enums/OrderStatusEnum.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/com/huj/sell/enums/OrderStatusEnum.java	(revision 5e5b20f8e524f64c68a142e390008a40273e2070)
++++ src/main/java/com/huj/sell/enums/OrderStatusEnum.java	(date 1528035708111)
+@@ -13,6 +13,7 @@
+     NEW(0,"新订单"),
+     FINISHED(1,"完结"),
+     CANCEL(2,"已取消"),
++    SUCCESS(3,"支付成功"),
+     ;
+ 
+     private Integer code;
+Index: src/main/java/com/huj/sell/enums/ResultEnum.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/com/huj/sell/enums/ResultEnum.java	(date 1528112599658)
++++ src/main/java/com/huj/sell/enums/ResultEnum.java	(date 1528112599658)
+@@ -0,0 +1,36 @@
++package com.huj.sell.enums;
++
++import lombok.Getter;
++
++/**
++ * Package: com.huj.sell.enums
++ * Author: smallcase
++ * Date: Created in 2018/6/3 10:11
++ */
++
++@Getter
++public enum ResultEnum {
++
++    PARAM_ERROR(1,"参数不正确"),
++    PRODUCT_NOT_EXIST(10,"商品不存在"),
++    PRODUCT_STOCK_ERROR(11,"商品库存错误"),
++    ORDER_NOT_EXIST(12,"订单不存在"),
++    ORDER_DETAIL_NOT_EXIST(13,"订单详情不存在"),
++    ORDER_STATUS_ERROR(14,"订单状态异常"),
++    ORDER_CANCEL_ERROR(15,"订单取消失败"),
++    ORDER_DELETE_EMPTY(16,"订单详情为空"),
++    ORDER_UPDATE_FAIL(17,"订单更新失败"),
++    ORDER_PAY_STATUS_ERROR(18,"订单支付状态异常"),
++    CART_EMPTY(19,"购物车为空"),
++    ORDER_OWNER(20,"该订单不属于当前用户"),
++
++    ;
++
++    private Integer code;
++    private String message;
++
++    ResultEnum(Integer code, String message) {
++        this.code = code;
++        this.message = message;
++    }
++}
+Index: src/main/java/com/huj/sell/exception/SellException.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/com/huj/sell/exception/SellException.java	(date 1528095370692)
++++ src/main/java/com/huj/sell/exception/SellException.java	(date 1528095370692)
+@@ -0,0 +1,23 @@
++package com.huj.sell.exception;
++
++import com.huj.sell.enums.ResultEnum;
++
++/**
++ * Package: com.huj.sell.exception
++ * Author: smallcase
++ * Date: Created in 2018/6/3 10:10
++ */
++public class SellException extends RuntimeException {
++
++    private Integer code;
++
++    public SellException(ResultEnum resultEnum) {
++        super(resultEnum.getMessage());
++        this.code = resultEnum.getCode();
++    }
++
++    public SellException(Integer code, String message) {
++        super(message);
++        this.code=code;
++    }
++}
+Index: src/main/java/com/huj/sell/from/OrderForm.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/com/huj/sell/from/OrderForm.java	(date 1528094980929)
++++ src/main/java/com/huj/sell/from/OrderForm.java	(date 1528094980929)
+@@ -0,0 +1,37 @@
++package com.huj.sell.from;
++
++import lombok.Data;
++import org.hibernate.validator.constraints.NotEmpty;
++
++/**
++ * Package: com.huj.sell.from
++ * Author: smallcase
++ * Date: Created in 2018/6/4 14:44
++ */
++
++@Data
++public class OrderForm {
++    /**
++     * 买家姓名
++     */
++    @NotEmpty(message = "姓名必填")
++    private String name;
++
++    //手机号
++    @NotEmpty(message = "手机号必填")
++    private String phone;
++
++    //买家地址
++
++    @NotEmpty(message = "地址必填")
++    private String address;
++
++    //买家微信openId
++    @NotEmpty(message = "openId")
++    private String openId;
++
++    //购物车
++    @NotEmpty(message = "购物车不能为空")
++    private String items;
++
++}
+Index: src/main/java/com/huj/sell/repository/OrderMasterReposity.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/com/huj/sell/repository/OrderMasterReposity.java	(revision 5e5b20f8e524f64c68a142e390008a40273e2070)
++++ src/main/java/com/huj/sell/repository/OrderMasterReposity.java	(date 1528009989234)
+@@ -10,6 +10,6 @@
+  * Author: smallcase
+  * Date: Created in 2018/6/2 10:23
+  */
+-public interface OrderMasterReposity extends JpaRepository<OrderMaster,Integer> {
++public interface OrderMasterReposity extends JpaRepository<OrderMaster,String> {
+     Page<OrderMaster> findByBuyerOpenid(String buyerOpenId, Pageable pageable);
+ }
+Index: src/main/java/com/huj/sell/service/impl/BuyderServiceImpl.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/com/huj/sell/service/impl/BuyderServiceImpl.java	(date 1528113139228)
++++ src/main/java/com/huj/sell/service/impl/BuyderServiceImpl.java	(date 1528113139228)
+@@ -0,0 +1,56 @@
++package com.huj.sell.service.impl;
++
++import com.huj.sell.dto.OrderDTO;
++import com.huj.sell.enums.ResultEnum;
++import com.huj.sell.exception.SellException;
++import com.huj.sell.service.BuyerService;
++import com.huj.sell.service.OrderService;
++import lombok.extern.slf4j.Slf4j;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.stereotype.Service;
++
++/**
++ * Package: com.huj.sell.service.impl
++ * Author: smallcase
++ * Date: Created in 2018/6/4 19:38
++ */
++
++
++@Service
++@Slf4j
++public class BuyderServiceImpl implements BuyerService {
++
++    @Autowired
++    private OrderService orderService;
++
++
++    @Override
++    public OrderDTO findOrderOne(String openId, String orderId) {
++        return checkOrderOwner(openId, orderId);
++    }
++
++    @Override
++    public OrderDTO cancelOrderOne(String openId, String orderId) {
++        OrderDTO orderDTO = checkOrderOwner(openId, orderId);
++        if (orderDTO == null) {
++            log.error("【取消订单】查不到该订单，orderId={}", orderId);
++            throw new SellException(ResultEnum.ORDER_NOT_EXIST);
++        }
++        return orderService.cancel(orderDTO);
++    }
++
++
++
++    private OrderDTO checkOrderOwner(String openId, String orderId) {
++        OrderDTO orderDTO = orderService.findOne(orderId);
++        if (orderDTO == null) {
++            return null;
++        }
++        //判断是否自己的订单
++        if (!orderDTO.getBuyerOpenid().equalsIgnoreCase(openId)) {
++            log.error("【查询订单】订单的openid不一致，openId={},orderDTO={}",orderId, orderDTO);
++            throw new SellException(ResultEnum.ORDER_OWNER);
++        }
++        return orderDTO;
++    }
++}
+Index: src/main/java/com/huj/sell/service/impl/OrderServiceImpl.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/com/huj/sell/service/impl/OrderServiceImpl.java	(date 1528036681033)
++++ src/main/java/com/huj/sell/service/impl/OrderServiceImpl.java	(date 1528036681033)
+@@ -0,0 +1,232 @@
++package com.huj.sell.service.impl;
++
++import com.huj.sell.converter.OrderMaster2OrderDTOConverter;
++import com.huj.sell.dataobject.OrderDetail;
++import com.huj.sell.dataobject.OrderMaster;
++import com.huj.sell.dataobject.ProductInfo;
++import com.huj.sell.dto.CartDTO;
++import com.huj.sell.dto.OrderDTO;
++import com.huj.sell.enums.OrderStatusEnum;
++import com.huj.sell.enums.PayStatusENum;
++import com.huj.sell.enums.ResultEnum;
++import com.huj.sell.exception.SellException;
++import com.huj.sell.repository.OrderDetailReposity;
++import com.huj.sell.repository.OrderMasterReposity;
++import com.huj.sell.service.OrderService;
++import com.huj.sell.service.ProductService;
++import com.huj.sell.utils.KeyUtil;
++import lombok.extern.slf4j.Slf4j;
++import org.springframework.beans.BeanUtils;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.context.annotation.Bean;
++import org.springframework.data.domain.Page;
++import org.springframework.data.domain.PageImpl;
++import org.springframework.data.domain.Pageable;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.util.CollectionUtils;
++
++import java.math.BigDecimal;
++import java.util.ArrayList;
++import java.util.List;
++import java.util.stream.Collectors;
++
++/**
++ * Package: com.huj.sell.service.impl
++ * Author: smallcase
++ * Date: Created in 2018/6/3 9:53
++ */
++
++@Service
++@Slf4j
++public class OrderServiceImpl implements OrderService {
++
++    @Autowired
++    private ProductService productService;
++
++    @Autowired
++    private OrderDetailReposity orderDetailReposity;
++
++    @Autowired
++    private OrderMasterReposity orderMasterReposity;
++
++    @Override
++    @Transactional
++    public OrderDTO create(OrderDTO orderDTO) {
++
++        String orderId = KeyUtil.genUniqueKey();
++        BigDecimal orderAmount = new BigDecimal(0);
++//        ArrayList<CartDTO> cartDTOList = new ArrayList<>();
++
++
++        //1、查询商品（数量，价格）
++        for (OrderDetail orderDetail:orderDTO.getOrderDetailList()){
++            ProductInfo productInfo = productService.findOne(orderDetail.getProductId());
++            if (productInfo==null){
++                throw new SellException(ResultEnum.PRODUCT_NOT_EXIST);
++            }
++            //2、计算总价
++            orderAmount = productInfo.getProductPrice()
++                    .multiply(new BigDecimal(orderDetail.getProductQuantity()))
++                    .add(orderAmount);
++
++            //写入详情数据库(orderMaster和orderDetail)
++            orderDetail.setOrderId(orderId);
++            orderDetail.setDetailId(KeyUtil.genUniqueKey());
++
++            BeanUtils.copyProperties(productInfo,orderDetail);
++            orderDetailReposity.save(orderDetail);
++
++//            CartDTO cartDTO = new CartDTO(orderDetail.getProductId(), orderDetail.getProductQuantity());
++//            cartDTOList.add(cartDTO);
++
++        }
++            
++        //写入订单数据库(orderMaster和orderDetail)
++        OrderMaster orderMaster = new OrderMaster();
++        BeanUtils.copyProperties(orderDTO, orderMaster);
++        orderMaster.setOrderId(orderId);
++        orderMaster.setOrderAmount(orderAmount);
++        orderMaster.setOrderStatus(OrderStatusEnum.NEW.getCode());
++        orderMaster.setPayStatus(PayStatusENum.WAIT.getCode());
++        orderMasterReposity.save(orderMaster);
++
++
++        //扣库存
++        List<CartDTO> cartDTOList = orderDTO.getOrderDetailList().stream()
++                .map(e -> new CartDTO(e.getProductId(), e.getProductQuantity()))
++                .collect(Collectors.toList());
++        productService.decreaseStock(cartDTOList);
++
++        BeanUtils.copyProperties(orderMaster,orderDTO);
++        return orderDTO;
++    }
++
++    @Override
++    public OrderDTO findOne(String orderId) {
++        OrderMaster orderMaster = orderMasterReposity.findOne(orderId);
++        if (orderMaster ==null){
++            throw new SellException(ResultEnum.ORDER_NOT_EXIST);
++        }
++
++        List<OrderDetail> orderDetailList = orderDetailReposity.findByOrderId(orderId);
++        if (CollectionUtils.isEmpty(orderDetailList)){
++            throw new SellException(ResultEnum.ORDER_DETAIL_NOT_EXIST);
++        }
++
++        OrderDTO orderDTO = new OrderDTO();
++        BeanUtils.copyProperties(orderMaster, orderDTO);
++        orderDTO.setOrderDetailList(orderDetailList);
++
++        return orderDTO;
++
++    }
++
++    @Override
++    public Page<OrderDTO> findList(String buyerOpenId, Pageable pageable) {
++        Page<OrderMaster> orderMasterPage = orderMasterReposity.findByBuyerOpenid(buyerOpenId, pageable);
++
++        List<OrderDTO> orderDTOList = OrderMaster2OrderDTOConverter
++                .convert(orderMasterPage.getContent());
++
++        Page<OrderDTO> orderDTOPage = new PageImpl<>(orderDTOList, pageable, orderMasterPage.getTotalElements());
++
++        return orderDTOPage;
++    }
++
++    @Override
++    @Transactional
++    /**
++     * 取消订单
++     */
++    public OrderDTO cancel(OrderDTO orderDTO) {
++
++        OrderMaster orderMaster = new OrderMaster();
++        /**判断订单状态*/
++        if (!orderDTO.getOrderStatus().equals(OrderStatusEnum.NEW.getCode())) {
++            log.error("【取消订单】订单状态不正确，orderId={},orderStatus={}", orderDTO.getOrderId(), orderDTO.getOrderStatus());
++            throw new SellException(ResultEnum.ORDER_STATUS_ERROR);
++        }
++
++        //修改订单状态
++        orderDTO.setOrderStatus(OrderStatusEnum.CANCEL.getCode());
++        BeanUtils.copyProperties(orderDTO, orderMaster);
++        OrderMaster updateResult = orderMasterReposity.save(orderMaster);
++        if (updateResult == null) {
++            log.error("【取消订单】失败， orderMaster={}",orderMaster);
++            throw new SellException(ResultEnum.ORDER_CANCEL_ERROR);
++        }
++
++        //返还库存
++        if (CollectionUtils.isEmpty(orderDTO.getOrderDetailList())) {
++            log.error("【取消订单】订单中无商品详情,orderDTO={}", orderDTO);
++            throw new SellException(ResultEnum.ORDER_DETAIL_NOT_EXIST);
++        }
++
++        List<CartDTO> cartDTOList = orderDTO.getOrderDetailList().stream()
++                .map(e -> new CartDTO(e.getProductId(), e.getProductQuantity()))
++                .collect(Collectors.toList());
++        productService.increaseStock(cartDTOList);
++
++
++        //若已经支付,需要退款
++
++        if (orderDTO.getPayStatus().equals(PayStatusENum.SUCCESS)) {
++            //TODO
++        }
++        return orderDTO;
++    }
++
++    @Override
++    @Transactional
++    public OrderDTO finish(OrderDTO orderDTO) {
++        //判断订单状态
++        if (!orderDTO.getOrderStatus().equals(OrderStatusEnum.NEW.getCode())) {
++            log.error("【完结订单】订单状态不正确,orderId={},orderStatus={}", orderDTO.getOrderId(), orderDTO.getOrderStatus());
++            throw new SellException(ResultEnum.ORDER_STATUS_ERROR);
++        }
++
++        //修改状态
++        orderDTO.setOrderStatus(OrderStatusEnum.FINISHED.getCode());
++        OrderMaster orderMaster = new OrderMaster();
++        BeanUtils.copyProperties(orderDTO,orderMaster);
++
++        OrderMaster updateResult = orderMasterReposity.save(orderMaster);
++        if (updateResult == null) {
++            log.error("【取消订单】失败， orderMaster={}", orderMaster);
++            throw new SellException(ResultEnum.ORDER_UPDATE_FAIL);
++        }
++
++        return orderDTO;
++    }
++
++    @Override
++    @Transactional
++    public OrderDTO paid(OrderDTO orderDTO) {
++        //判断订单状态
++        if (!orderDTO.getOrderStatus().equals(OrderStatusEnum.FINISHED.getCode())) {
++            log.error("【订单支付成功】订单状态不正确,orderId={},orderStatus={}", orderDTO.getOrderId(), orderDTO.getOrderStatus());
++            throw new SellException(ResultEnum.ORDER_STATUS_ERROR);
++        }
++        //判断支付状态
++
++        if (!orderDTO.getPayStatus().equals(PayStatusENum.WAIT.getCode())) {
++            log.error("【订单支付完成】订单支付状态不正确，orderDTO={}", orderDTO);
++            throw new SellException(ResultEnum.ORDER_PAY_STATUS_ERROR);
++        }
++
++        //修改支付状态
++
++        orderDTO.setPayStatus(PayStatusENum.SUCCESS.getCode());
++        OrderMaster orderMaster = new OrderMaster();
++        BeanUtils.copyProperties(orderDTO, orderMaster);
++        OrderMaster updateResult = orderMasterReposity.save(orderMaster);
++
++        if (updateResult == null) {
++            log.error("【订单支付完成】更新失败,orderMaster={}", orderMaster);
++            throw new SellException(ResultEnum.ORDER_UPDATE_FAIL);
++        }
++
++        return orderDTO;
++    }
++}
+Index: src/main/java/com/huj/sell/service/impl/ProductServiceImpl.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/com/huj/sell/service/impl/ProductServiceImpl.java	(revision 5e5b20f8e524f64c68a142e390008a40273e2070)
++++ src/main/java/com/huj/sell/service/impl/ProductServiceImpl.java	(date 1528030789812)
+@@ -1,13 +1,17 @@
+ package com.huj.sell.service.impl;
+ 
+ import com.huj.sell.dataobject.ProductInfo;
++import com.huj.sell.dto.CartDTO;
+ import com.huj.sell.enums.ProductStatusEnum;
++import com.huj.sell.enums.ResultEnum;
++import com.huj.sell.exception.SellException;
+ import com.huj.sell.repository.ProductInfoRepository;
+ import com.huj.sell.service.ProductService;
+ import org.springframework.beans.factory.annotation.Autowired;
+ import org.springframework.data.domain.Page;
+ import org.springframework.data.domain.Pageable;
+ import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
+ 
+ import java.util.List;
+ 
+@@ -42,4 +46,40 @@
+     public ProductInfo save(ProductInfo productInfo) {
+         return repository.save(productInfo);
+     }
++
++    @Override
++    public void increaseStock(List<CartDTO> cartDTOList) {
++        for (CartDTO cartDTO : cartDTOList) {
++            ProductInfo productInfo = repository.findOne(cartDTO.getProductId());
++            if (productInfo == null){
++                throw new SellException(ResultEnum.PRODUCT_NOT_EXIST);
++            }
++
++            int stock = productInfo.getProductStock() + cartDTO.getProductQuantity();
++            productInfo.setProductStock(stock);
++            repository.save(productInfo);
++
++        }
++
++    }
++
++    @Override
++    @Transactional
++    public void decreaseStock(List<CartDTO> cartDTOList) {
++
++        for (CartDTO cartDTO:cartDTOList){
++            ProductInfo productInfo = repository.findOne(cartDTO.getProductId());
++            if (productInfo == null){
++                throw new SellException(ResultEnum.PRODUCT_NOT_EXIST);
++            }
++
++            int leftQuantity = productInfo.getProductStock() - cartDTO.getProductQuantity();
++            if (leftQuantity < 0){
++                throw new SellException(ResultEnum.PRODUCT_STOCK_ERROR);
++            }
++
++            productInfo.setProductStock(leftQuantity);
++            repository.save(productInfo);
++        }
++    }
+ }
+Index: src/main/java/com/huj/sell/service/BuyerService.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/com/huj/sell/service/BuyerService.java	(date 1528112274795)
++++ src/main/java/com/huj/sell/service/BuyerService.java	(date 1528112274795)
+@@ -0,0 +1,20 @@
++package com.huj.sell.service;
++
++import com.huj.sell.dto.OrderDTO;
++
++/**
++ *
++ * 买家
++ * Package: com.huj.sell.service
++ * Author: smallcase
++ * Date: Created in 2018/6/4 19:35
++ */
++public interface BuyerService {
++
++    //查询一个订单
++    OrderDTO findOrderOne(String openId, String orderId);
++    //取消订单
++    OrderDTO cancelOrderOne(String openId, String orderId);
++
++
++}
+Index: src/main/java/com/huj/sell/service/OrderService.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/com/huj/sell/service/OrderService.java	(date 1527990768277)
++++ src/main/java/com/huj/sell/service/OrderService.java	(date 1527990768277)
+@@ -0,0 +1,38 @@
++package com.huj.sell.service;
++
++
++import com.huj.sell.dto.OrderDTO;
++import org.springframework.data.domain.Page;
++import org.springframework.data.domain.Pageable;
++
++/**
++ * Package: com.huj.sell.service
++ * Author: smallcase
++ * Date: Created in 2018/6/3 9:36
++ */
++public interface OrderService {
++    /**
++     * 创建订单
++     */
++    OrderDTO create(OrderDTO orderDTO);
++
++    /**查询单个订单*/
++    OrderDTO findOne(String orderId);
++
++    /**
++     * 查询订单列表
++     */
++    Page<OrderDTO> findList(String buyerOpenId, Pageable pageable);
++
++    /**
++     * 取消订单
++     */
++    OrderDTO cancel(OrderDTO orderDTO);
++
++    /**完结订单*/
++    OrderDTO finish (OrderDTO orderDTO);
++
++    /**支付订单*/
++    OrderDTO paid(OrderDTO orderDTO);
++
++}
+Index: src/main/java/com/huj/sell/service/ProductService.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/com/huj/sell/service/ProductService.java	(revision 5e5b20f8e524f64c68a142e390008a40273e2070)
++++ src/main/java/com/huj/sell/service/ProductService.java	(date 1527995769114)
+@@ -1,6 +1,7 @@
+ package com.huj.sell.service;
+ 
+ import com.huj.sell.dataobject.ProductInfo;
++import com.huj.sell.dto.CartDTO;
+ import org.springframework.data.domain.Page;
+ import org.springframework.data.domain.Pageable;
+ import org.springframework.stereotype.Service;
+@@ -32,5 +33,8 @@
+ 
+     /**加库存*/
+ 
++    void increaseStock(List<CartDTO> cartDTOList);
+     /**减库存*/
++    void decreaseStock(List<CartDTO> cartDTOList);
++
+ }
+Index: src/main/java/com/huj/sell/utils/serializer/Date2LongSerializer.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/com/huj/sell/utils/serializer/Date2LongSerializer.java	(date 1528103408679)
++++ src/main/java/com/huj/sell/utils/serializer/Date2LongSerializer.java	(date 1528103408679)
+@@ -0,0 +1,21 @@
++package com.huj.sell.utils.serializer;
++
++import com.fasterxml.jackson.core.JsonGenerator;
++import com.fasterxml.jackson.core.JsonProcessingException;
++import com.fasterxml.jackson.databind.JsonSerializer;
++import com.fasterxml.jackson.databind.SerializerProvider;
++
++import java.io.IOException;
++import java.util.Date;
++
++/**
++ * Package: com.huj.sell.utils.serializer
++ * Author: smallcase
++ * Date: Created in 2018/6/4 17:07
++ */
++public class Date2LongSerializer extends JsonSerializer<Date> {
++    @Override
++    public void serialize(Date date, JsonGenerator jsonGenerator, SerializerProvider serializerProvider) throws IOException, JsonProcessingException {
++        jsonGenerator.writeNumber(date.getTime()/1000);
++    }
++}
+Index: src/main/java/com/huj/sell/utils/KeyUtil.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/com/huj/sell/utils/KeyUtil.java	(date 1527993181079)
++++ src/main/java/com/huj/sell/utils/KeyUtil.java	(date 1527993181079)
+@@ -0,0 +1,23 @@
++package com.huj.sell.utils;
++
++import java.util.Random;
++
++/**
++ * Package: com.huj.sell.utils
++ * Author: smallcase
++ * Date: Created in 2018/6/3 10:26
++ */
++public class KeyUtil {
++
++    /**
++     * 生成唯一主键
++     * 格式：时间+随机数
++     * @return
++     */
++    public static synchronized String genUniqueKey(){
++        Random random = new Random();
++        int number = random.nextInt(900000) + 100000;
++        return System.currentTimeMillis() + String.valueOf(number);
++
++    }
++}
+Index: src/main/resources/application.yml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/resources/application.yml	(revision 5e5b20f8e524f64c68a142e390008a40273e2070)
++++ src/main/resources/application.yml	(date 1528104338938)
+@@ -6,6 +6,9 @@
+     url: jdbc:mysql://localhost:3306/sell?autoReconnect=true&useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false
+   jpa:
+     show-sql: true
++  jackson:
++    default-property-inclusion: non_null
++
+ 
+ server:
+   context-path: /sell
+Index: src/test/java/com/huj/sell/service/impl/OrderServiceImplTest.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/test/java/com/huj/sell/service/impl/OrderServiceImplTest.java	(date 1528110194310)
++++ src/test/java/com/huj/sell/service/impl/OrderServiceImplTest.java	(date 1528110194310)
+@@ -0,0 +1,106 @@
++package com.huj.sell.service.impl;
++
++import com.huj.sell.dataobject.OrderDetail;
++import com.huj.sell.dto.OrderDTO;
++import com.huj.sell.enums.OrderStatusEnum;
++import com.huj.sell.enums.PayStatusENum;
++import org.junit.Assert;
++import org.junit.Test;
++import org.junit.runner.RunWith;
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.boot.test.context.SpringBootTest;
++import org.springframework.data.domain.Page;
++import org.springframework.data.domain.PageRequest;
++import org.springframework.test.context.junit4.SpringRunner;
++import org.springframework.transaction.annotation.Transactional;
++
++import javax.persistence.Transient;
++import java.util.ArrayList;
++
++import static org.junit.Assert.*;
++
++/**
++ * Package: com.huj.sell.service.impl
++ * Author: smallcase
++ * Date: Created in 2018/6/3 15:23
++ */
++
++
++@RunWith(SpringRunner.class)
++@SpringBootTest
++public class OrderServiceImplTest {
++    private final static Logger logger = LoggerFactory.getLogger(OrderServiceImplTest.class);
++
++    @Autowired
++    private OrderServiceImpl orderService;
++
++    private final String BUYER_OPENID = "110110";
++    private final String ORDER_ID = "1528016955813393766";
++
++    @Test
++    @Transactional
++    public void create() {
++        OrderDTO orderDTO = new OrderDTO();
++        orderDTO.setBuyerName("胡佳林jj");
++        orderDTO.setBuyerOpenid(BUYER_OPENID);
++        orderDTO.setBuyerAddress("江苏南通");
++        orderDTO.setBuyerPhone("13812223344");
++
++        //购物车
++        ArrayList<OrderDetail> orderDetailList = new ArrayList<>();
++        OrderDetail o1 = new OrderDetail();
++        OrderDetail o2 = new OrderDetail();
++        o2.setProductId("123458");
++        o2.setProductQuantity(8);
++        o1.setProductId("123459");
++        o1.setProductQuantity(10);
++
++        orderDetailList.add(o1);
++        orderDetailList.add(o2);
++
++        orderDTO.setOrderDetailList(orderDetailList);
++        OrderDTO result = orderService.create(orderDTO);
++        logger.info("【创建订单】 result = {}",result);
++        Assert.assertNotNull(result);
++    }
++
++    @Test
++    public void findOne() {
++
++        OrderDTO result = orderService.findOne(ORDER_ID);
++        logger.info("【查询单个订单】result = {}",result);
++        Assert.assertEquals(ORDER_ID,result.getOrderId());
++
++    }
++
++    @Test
++    public void findList() {
++        PageRequest pageRequest = new PageRequest(0, 2);
++        Page<OrderDTO> orderDTOPage = orderService.findList(BUYER_OPENID, pageRequest);
++        logger.info("【查询订单列表】result = {}",orderDTOPage.getContent());
++        Assert.assertNotEquals(0,orderDTOPage.getTotalElements());
++    }
++
++    @Test
++    public void cancel() {
++        OrderDTO orderDTO = orderService.findOne(ORDER_ID);
++        OrderDTO result = orderService.cancel(orderDTO);
++        Assert.assertEquals(OrderStatusEnum.CANCEL.getCode(),result.getOrderStatus());
++    }
++
++    @Test
++    public void finish() {
++        OrderDTO orderDTO = orderService.findOne(ORDER_ID);
++        OrderDTO result = orderService.finish(orderDTO);
++        Assert.assertEquals(OrderStatusEnum.FINISHED.getCode(),result.getOrderStatus());
++    }
++
++    @Test
++    public void paid() {
++        OrderDTO orderDTO = orderService.findOne(ORDER_ID);
++        OrderDTO result = orderService.paid(orderDTO);
++        Assert.assertEquals(PayStatusENum.SUCCESS.getCode(),result.getPayStatus());
++    }
++}
+\ No newline at end of file
+Index: pom.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- pom.xml	(revision 5e5b20f8e524f64c68a142e390008a40273e2070)
++++ pom.xml	(date 1528096104308)
+@@ -61,6 +61,11 @@
+ 			<groupId>org.projectlombok</groupId>
+ 			<artifactId>lombok</artifactId>
+ 		</dependency>
++
++		<dependency>
++			<groupId>com.google.code.gson</groupId>
++			<artifactId>gson</artifactId>
++		</dependency>
+ 	</dependencies>
+ 
+ 	<build>
