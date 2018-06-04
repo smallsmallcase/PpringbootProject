@@ -13,6 +13,7 @@ public enum  OrderStatusEnum {
     NEW(0,"新订单"),
     FINISHED(1,"完结"),
     CANCEL(2,"已取消"),
+    SUCCESS(3,"支付成功"),
     ;
 
     private Integer code;

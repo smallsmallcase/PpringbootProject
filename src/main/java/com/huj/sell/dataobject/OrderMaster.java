@@ -5,12 +5,10 @@ import com.huj.sell.enums.PayStatusENum;
 import lombok.Data;
 import org.hibernate.annotations.DynamicUpdate;
 
-import javax.persistence.Entity;
-import javax.persistence.GeneratedValue;
-import javax.persistence.GenerationType;
-import javax.persistence.Id;
+import javax.persistence.*;
 import java.math.BigDecimal;
 import java.util.Date;
+import java.util.List;
 
 /**
  * Package: com.huj.sell.dataobject
@@ -42,22 +40,23 @@ public class OrderMaster {
     /**订单总金额.*/
     private BigDecimal orderAmount;
 
+    /**创建时间*/
+    @Column(updatable = false)
+    private Date createTime;
+
+    /**更新时间*/
+    private Date updateTime;
+
     /**订单状态，默认为新下单.*/
     private Integer orderStatus = OrderStatusEnum.NEW.getCode();
 
     /**支付状态，默认为0，未支付*/
     private Integer payStatus = PayStatusENum.WAIT.getCode();
 
+//    @Transient
+//    private List<OrderDetail> orderDetailList;
+
     public OrderMaster() {
     }
-
-
-    //    /**创建时间*/
-//    private Date createTime;
-//
-//    /**更新时间*/
-//    private Date updateTime;
-
-
-    }
+}
 

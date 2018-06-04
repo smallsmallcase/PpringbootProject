@@ -6,6 +6,9 @@ spring:
     url: jdbc:mysql://localhost:3306/sell?autoReconnect=true&useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false
   jpa:
     show-sql: true
+  jackson:
+    default-property-inclusion: non_null
+
 
 server:
   context-path: /sell

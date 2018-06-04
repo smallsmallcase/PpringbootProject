@@ -10,6 +10,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
  * Author: smallcase
  * Date: Created in 2018/6/2 10:23
  */
-public interface OrderMasterReposity extends JpaRepository<OrderMaster,Integer> {
+public interface OrderMasterReposity extends JpaRepository<OrderMaster,String> {
     Page<OrderMaster> findByBuyerOpenid(String buyerOpenId, Pageable pageable);
 }
